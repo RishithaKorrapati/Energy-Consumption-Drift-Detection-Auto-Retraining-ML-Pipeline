@@ -1,0 +1,61 @@
+# CI: install dependencies, preprocess (sampled), train, simulate drift, retrain when drift fires.
+
+name: ML pipeline CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch UCI Household Power Consumption (if missing)
+        run: |
+          if [ ! -f household_power_consumption.txt ]; then
+            curl -fsSL -o hpc.zip "https://archive.ics.uci.edu/static/public/235/individual+household+electric+power+consumption.zip"
+            unzip -q -o hpc.zip
+          fi
+          test -f household_power_consumption.txt
+
+      - name: Preprocess (sample for CI speed)
+        run: python scripts/preprocess.py --sample-rows 80000
+
+      - name: Train baseline model
+        run: python scripts/train.py --version 1
+
+      - name: Simulate operational window with shifted consumption (drift)
+        run: |
+          python << 'EOF'
+          import pandas as pd
+          from pathlib import Path
+          df = pd.read_csv("data/cleaned_data.csv", parse_dates=["datetime"])
+          tail = df.tail(6000).copy()
+          tail["Global_active_power"] = tail["Global_active_power"] + 2.2
+          Path("data").mkdir(exist_ok=True)
+          tail.to_csv("data/new_data.csv", index=False)
+          EOF
+
+      - name: Drift detection
+        run: python scripts/drift.py --reference data/cleaned_data.csv --current data/new_data.csv --threshold 0.35
+
+      - name: Retrain on drift
+        run: python scripts/retrain.py --reference data/cleaned_data.csv --current data/new_data.csv --threshold 0.35
+
+      - name: Verify artifacts
+        run: |
+          test -f model/model.pkl
+          test -f model/model_v2.pkl
+          python -c "import json; m=json.load(open('model/model_metadata.json')); assert m.get('model_version') >= 2"

@@ -1,0 +1,17 @@
+{
+  "model_version": 1,
+  "last_trained_at": "2026-03-31T19:21:18.828061+00:00",
+  "last_retrained_at": "2026-03-31T19:21:18.828061+00:00",
+  "model_file": "model\\model.pkl",
+  "metrics": {
+    "mae": 0.7637743164627693,
+    "rmse": 1.015708697667155,
+    "n_train": 1639424,
+    "n_test": 409856,
+    "feature_columns": [
+      "hour",
+      "day",
+      "month"
+    ]
+  }
+}
